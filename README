@@ -1,0 +1,72 @@
+# Autonomous Driving Perception and Control
+
+Selected Python code from a student-team entry in the **26th China Robotics and Artificial Intelligence Competition (2025)**. The project combines demonstration-based steering prediction, traffic-sign perception and vehicle control. The historical repository name `CRAIC2024` has been retained.
+
+> **Repository status:** This is a partial archive of competition code, not a ready-to-run software release. Training data, model weights, some local source modules and the original vehicle hardware are not included. See [Reproducibility and limitations](#reproducibility-and-limitations).
+
+## Problem and approach
+
+The system separates two real-time tasks:
+
+1. **Lane following:** A camera image is converted to an HSV lane mask; a CNN predicts a steering command from the processed image.
+2. **Traffic-sign response:** A YOLOv5 detector recognises signs and signals. Selected detections trigger rule-based speed or stop commands, which are passed to the lane-control process.
+
+Joystick-controlled driving sessions provide paired road images and steering-angle labels for the steering model. The deployed Python program integrates the perception processes with a serial interface to the vehicle.
+
+```mermaid
+flowchart TD
+    A["Joystick driving"] --> B["Image and steering data"]
+    B --> C["PaddlePaddle CNN training"]
+    C --> D["Steering inference"]
+    E["Lane camera"] --> F["HSV preprocessing"]
+    F --> D
+    G["Sign camera"] --> H["YOLOv5 detection"]
+    H --> I["Rule-based speed events"]
+    I --> J["Inter-process queue"]
+    D --> K["Vehicle command and serial I/O"]
+    J --> K
+```
+
+## Technical implementation
+
+| Component | Implementation visible in this repository |
+| --- | --- |
+| Demonstration-data collection | Linux joystick events, camera frames and steering labels recorded by `Data_Coll.py` |
+| Dataset preparation | `Create_Data_Liet.py` creates training and test-list files from labelled image paths |
+| Steering model | PaddlePaddle static-graph CNN training code in `Train_Model.py`, with a mean-squared-error objective and Adam optimiser (`1e-3`) |
+| Training configuration | 120 x 120 image inputs, batch size 32 and a 60-pass training loop in the published script |
+| Lane inference | HSV thresholding and PaddlePaddle inference in `Auto_Driver.py` |
+| Traffic-sign perception | YOLOv5 inference with PyTorch; the application filters detected classes by confidence and bounding-box area |
+| Decision interface | Separate Python processes, a `multiprocessing.Queue`, rule-based event handling and serial vehicle commands |
+
+In `Auto_Driver.py`, speed/stop responses are implemented for selected signs and signals, including a speed limit, pedestrian crossing, traffic light and warning sign. Some recognised classes, such as lane-change and turn signs, currently have placeholder branches rather than completed manoeuvre control. The inference script applies an additional confidence filter of `0.80` after YOLOv5 non-maximal suppression.
+
+## Repository guide
+
+- [`Data_Coll.py`](Data_Coll.py) - joystick teleoperation, camera recording and steering-label collection.
+- [`Create_Data_Liet.py`](Create_Data_Liet.py) - creation of training/test file lists. The split is based on file iteration order, not a documented randomised or stratified procedure.
+- [`Train_Model.py`](Train_Model.py) - PaddlePaddle training and evaluation loop for the steering regressor.
+- [`Auto_Driver.py`](Auto_Driver.py) - lane-image preprocessing, model inference, traffic-sign detection, event queue and serial commands.
+- [`labelImg.py`](labelImg.py) and [`resources.py`](resources.py) - image-annotation tooling and associated resources; these should not be treated as original research contributions simply because they are included here.
+- [`README_zh.md`](README_zh.md) - earlier Chinese-language project notes.
+
+## Reproducibility and limitations
+
+This repository demonstrates the implementation approach but is **not currently self-contained**:
+
+- `Train_Model.py` imports `cnn_model` and `reader`, which are not present in this repository snapshot.
+- The collection and vehicle-control scripts also reference local helpers such as `car_drive`, `Img_Handle` and `hex_change` that are not included.
+- The deployment script expects YOLOv5 repository modules (`models` and `utils`), a separately trained weights file, a PaddlePaddle inference model, Linux camera paths and a connected serial device.
+- PaddlePaddle `fluid` and the image-processing APIs are legacy interfaces. Package versions and a known-working environment have not been pinned.
+- The training dataset, labelled samples, training curves, detector model, vehicle calibration, test protocol and reproducible performance logs have not been published here.
+- This README does not claim a complete autonomous-driving stack or independently verified performance figures.
+
+For a reproducible future release, the next priorities are to document dependency versions, supply redistributable source helpers, include a small non-sensitive sample dataset and provide separate train/evaluation instructions. Proprietary or competition-restricted data and models should not be uploaded without permission.
+
+## Connection to research in scientific AI
+
+The project provides experience with a multi-stage decision pipeline: collect data, train a model, assess predictions, combine model outputs with constraints and execute actions on physical hardware. This is relevant preparation for studying simulation-informed decision-making and model verification. It does **not** itself implement computational fluid dynamics, reinforcement learning from physics feedback or AI agents for reactor design.
+
+## Attribution
+
+This is selected code from a **team competition project**. Third-party frameworks, model code and annotation utilities retain their respective authorship and licences. Contributions by individual team members and reuse of external code should be documented explicitly before the repository is used as formal evidence of sole authorship.
